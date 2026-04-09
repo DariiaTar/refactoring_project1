@@ -1,224 +1,793 @@
-# gradebook.py
 
-import datetime
+import datetime, random
 
-s = []  # students
-c = []  # courses  
-g = []  # grades
+######## ДАНІ ########
+INVENTORY = []
+CUSTOMERS = []  
+ORDERS = []
+CARTS = []
+PROMO = []
+RETURNS = []
+SUPPLIERS = []
+DELIVERIES = []
 
-def ns(fn, ln, yr, em):
-    for i in range(len(s)):
-        if s[i][2] == em:
-            print("exists")
+# розміри які є в магазині
+SIZES = [36,36.5,37,37.5,38,38.5,39,39.5,40,40.5,41,41.5,42,42.5,43,43.5,44,44.5,45,46,47]
+
+######## ТОВАРИ ########
+
+# додати кросівки в магазин
+def newShoe(brand, model, colorway, sz_prices, cat, gender, material):
+    # sz_prices це словник {розмір: ціна}
+    # перевірити чи є вже такі
+    for x in INVENTORY:
+        if x['brand']==brand and x['model']==model and x['colorway']==colorway:
+            # просто оновити ціни якщо є
+            for s in sz_prices:
+                found=False
+                for v in x['variants']:
+                    if v[0]==s:
+                        v[1]=sz_prices[s]
+                        found=True
+                if not found:
+                    x['variants'].append([s, sz_prices[s], 0, 0]) # розмір, ціна, кількість, продано
+            print(f"оновлено: {brand} {model}")
             return
-    id = len(s) + 1
-    s.append([id, fn + " " + ln, em, yr, [], 0])
-    print("added " + str(id))
+    # нова пара
+    variants = []
+    for s in sz_prices:
+        variants.append([s, sz_prices[s], 0, 0])
+    id = 'SH' + str(len(INVENTORY)+1).zfill(4)
+    INVENTORY.append({
+        'id': id,
+        'brand': brand,
+        'model': model, 
+        'colorway': colorway,
+        'category': cat,         # running/basketball/lifestyle/training
+        'gender': gender,        # M/F/U (unisex)
+        'material': material,    # шкіра/сітка/замша тощо
+        'variants': variants,    # [розмір, ціна, кількість, продано]
+        'active': True,
+        'rating': [],
+        'created': datetime.datetime.now()
+    })
+    print(f"додано: {id} {brand} {model} {colorway}")
 
-def nc(name, cr, max_g):
-    for i in range(len(c)):
-        if c[i][0] == name:
-            print("exists")
+def stockUp(shoe_id, sz, qty, supplier_id=None):
+    # поповнити склад
+    for x in INVENTORY:
+        if x['id'] == shoe_id:
+            for v in x['variants']:
+                if v[0] == sz:
+                    v[2] += qty
+                    # записати поставку якщо є постачальник
+                    if supplier_id:
+                        DELIVERIES.append({
+                            'shoe': shoe_id,
+                            'size': sz,
+                            'qty': qty,
+                            'supplier': supplier_id,
+                            'date': datetime.datetime.now(),
+                            'status': 'received'
+                        })
+                    print(f"поповнено {shoe_id} розмір {sz}: +{qty} шт")
+                    return
+            # розміру не було — додати
+            x['variants'].append([sz, 0, qty, 0])
+            print(f"новий розмір {sz} для {shoe_id}: {qty} шт")
             return
-    c.append([name, cr, max_g, []])
-    print("ok")
+    print("товар не знайдено")
 
-def ag(sid, cname, score, t):
-    sf = -1
-    cf = -1
-    for i in range(len(s)):
-        if s[i][0] == sid:
-            sf = i
-    for i in range(len(c)):
-        if c[i][0] == cname:
-            cf = i
-    if sf == -1:
-        print("no student")
-        return
-    if cf == -1:
-        print("no course")
-        return
-    if score < 0 or score > c[cf][2]:
-        print("bad score")
-        return
-    if t != "exam" and t != "hw" and t != "lab" and t != "test":
-        print("bad type")
-        return
-    for i in range(len(g)):
-        if g[i][0] == sid and g[i][1] == cname and g[i][3] == t and g[i][4] == "active":
-            print("already has this type")
+def findShoe(brand=None, cat=None, gender=None, sz=None, max_price=None, in_stock=True):
+    res = []
+    for x in INVENTORY:
+        if not x['active']:
+            continue
+        if brand and brand.lower() not in x['brand'].lower():
+            continue
+        if cat and x['category'] != cat:
+            continue
+        if gender and x['gender'] != gender:
+            continue
+        # перевірити розмір і ціну
+        ok_variants = []
+        for v in x['variants']:
+            if in_stock and v[2] <= 0:
+                continue
+            if sz and v[0] != sz:
+                continue
+            if max_price and v[1] > max_price:
+                continue
+            ok_variants.append(v)
+        if ok_variants:
+            res.append({'shoe': x, 'variants': ok_variants})
+    return res
+
+def showShoe(shoe_id):
+    for x in INVENTORY:
+        if x['id'] == shoe_id:
+            avg_r = round(sum(x['rating'])/len(x['rating']),1) if x['rating'] else 'немає'
+            print(f"\n{'='*40}")
+            print(f"{x['brand']} {x['model']} — {x['colorway']}")
+            print(f"категорія: {x['category']} | стать: {x['gender']} | матеріал: {x['material']}")
+            print(f"рейтинг: {avg_r}/5")
+            print(f"наявність:")
+            for v in sorted(x['variants'], key=lambda q: q[0]):
+                stock_str = f"{v[2]} шт" if v[2]>0 else "немає"
+                print(f"  розмір {v[0]}: {v[1]} грн — {stock_str}")
             return
-    dt = datetime.datetime.now()
-    gid = len(g) + 1
-    g.append([sid, cname, score, t, "active", dt, gid])
-    p = score / c[cf][2] * 100
-    if p >= 90:
-        gr = "A"
-    if p >= 75 and p < 90:
-        gr = "B"
-    if p >= 60 and p < 75:
-        gr = "C"
-    if p >= 50 and p < 60:
-        gr = "D"
-    if p < 50:
-        gr = "F"
-    g[-1].append(gr)
-    s[sf][4].append(gid)
-    s[sf][5] = s[sf][5] + score
-    c[cf][3].append(gid)
-    print("grade added: " + gr)
+    print("не знайдено")
 
-def sg(sid):
-    sf = -1
-    for i in range(len(s)):
-        if s[i][0] == sid:
-            sf = i
-    if sf == -1:
-        print("no student")
+def deactivateShoe(shoe_id):
+    for x in INVENTORY:
+        if x['id'] == shoe_id:
+            if not x['active']:
+                print("вже неактивний")
+                return
+            x['active'] = False
+            print(f"знято з продажу: {shoe_id}")
+            return
+    print("не знайдено")
+
+def rateShoe(shoe_id, customer_id, score, comment=""):
+    # перевірити що клієнт купував цей товар
+    bought = False
+    for o in ORDERS:
+        if o['customer'] == customer_id and o['status'] == 'delivered':
+            for item in o['items']:
+                if item[0] == shoe_id:
+                    bought = True
+    if not bought:
+        print("можна оцінити тільки куплений товар")
         return
-    print("=== " + s[sf][1] + " grades ===")
+    if score < 1 or score > 5:
+        print("оцінка від 1 до 5")
+        return
+    for x in INVENTORY:
+        if x['id'] == shoe_id:
+            x['rating'].append(score)
+            print(f"дякуємо за відгук! поточний рейтинг: {round(sum(x['rating'])/len(x['rating']),1)}")
+            return
+
+######## ПОСТАЧАЛЬНИКИ ########
+
+def addSupplier(name, country, contact, markup):
+    for s in SUPPLIERS:
+        if s['name'] == name:
+            print("постачальник існує")
+            return
+    id = 'SUP' + str(len(SUPPLIERS)+1).zfill(3)
+    SUPPLIERS.append({
+        'id': id,
+        'name': name,
+        'country': country,
+        'contact': contact,
+        'markup': markup,    # відсоток націнки
+        'active': True,
+        'deliveries': 0
+    })
+    print(f"постачальника додано: {id} {name}")
+
+def showSupplier(sup_id):
+    for s in SUPPLIERS:
+        if s['id'] == sup_id:
+            d_count = len([d for d in DELIVERIES if d['supplier']==sup_id])
+            print(f"постачальник: {s['name']}")
+            print(f"країна: {s['country']}")
+            print(f"контакт: {s['contact']}")
+            print(f"націнка: {s['markup']}%")
+            print(f"поставок: {d_count}")
+            return
+    print("не знайдено")
+
+######## КЛІЄНТИ ########
+
+def registerCustomer(first, last, email, phone, bday=None):
+    for c in CUSTOMERS:
+        if c['email'] == email:
+            print(f"клієнт з таким email вже є")
+            return None
+    id = 'C' + str(len(CUSTOMERS)+1).zfill(5)
+    CUSTOMERS.append({
+        'id': id,
+        'name': first + ' ' + last,
+        'email': email,
+        'phone': phone,
+        'bday': bday,
+        'registered': datetime.datetime.now(),
+        'orders': [],
+        'wishlist': [],
+        'total_spent': 0,
+        'bonus_points': 0,
+        'tier': 'bronze',   # bronze/silver/gold/platinum
+        'active': True,
+        'addresses': []
+    })
+    print(f"реєстрація успішна! ваш id: {id}")
+    return id
+
+def addAddress(customer_id, city, street, building, apt=None, is_default=False):
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            addr = {
+                'city': city,
+                'street': street,
+                'building': building,
+                'apt': apt,
+                'default': is_default
+            }
+            if is_default:
+                for a in c['addresses']:
+                    a['default'] = False
+            c['addresses'].append(addr)
+            print("адресу додано")
+            return
+    print("клієнта не знайдено")
+
+def showCustomer(customer_id):
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            print(f"\n{'='*40}")
+            print(f"клієнт: {c['name']}")
+            print(f"email: {c['email']} | тел: {c['phone']}")
+            print(f"рівень: {c['tier']} | бонуси: {c['bonus_points']}")
+            print(f"замовлень: {len(c['orders'])} | витрачено: {c['total_spent']} грн")
+            print(f"вішлист: {len(c['wishlist'])} товарів")
+            return
+    print("клієнта не знайдено")
+
+def updateTier(customer_id):
+    # оновити рівень на основі витрат
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            spent = c['total_spent']
+            if spent >= 50000:
+                c['tier'] = 'platinum'
+            if spent >= 20000 and spent < 50000:
+                c['tier'] = 'gold'
+            if spent >= 8000 and spent < 20000:
+                c['tier'] = 'silver'
+            if spent < 8000:
+                c['tier'] = 'bronze'
+            return
+
+def addToWishlist(customer_id, shoe_id):
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            if shoe_id in c['wishlist']:
+                print("вже в вішлісті")
+                return
+            c['wishlist'].append(shoe_id)
+            print("додано до вішліста")
+            return
+    print("клієнта не знайдено")
+
+######## КОШИК ########
+
+def getCart(customer_id):
+    for cart in CARTS:
+        if cart['customer'] == customer_id and cart['active']:
+            return cart
+    # створити новий
+    new_cart = {
+        'customer': customer_id,
+        'items': [],   # [shoe_id, size, qty, price]
+        'active': True,
+        'created': datetime.datetime.now()
+    }
+    CARTS.append(new_cart)
+    return new_cart
+
+def addToCart(customer_id, shoe_id, size, qty=1):
+    # перевірити наявність
+    shoe = None
+    variant = None
+    for x in INVENTORY:
+        if x['id'] == shoe_id and x['active']:
+            for v in x['variants']:
+                if v[0] == size:
+                    shoe = x
+                    variant = v
+    if not shoe:
+        print("товар не знайдено або недоступний")
+        return
+    if not variant or variant[2] < qty:
+        print(f"немає в наявності розмір {size}")
+        return
+    cart = getCart(customer_id)
+    # перевірити чи є вже в кошику
+    for item in cart['items']:
+        if item[0] == shoe_id and item[1] == size:
+            item[2] += qty
+            print(f"оновлено кошик: {shoe['brand']} {shoe['model']} р.{size} x{item[2]}")
+            return
+    cart['items'].append([shoe_id, size, qty, variant[1]])
+    print(f"додано до кошика: {shoe['brand']} {shoe['model']} р.{size} — {variant[1]} грн")
+
+def removeFromCart(customer_id, shoe_id, size):
+    cart = getCart(customer_id)
+    for i, item in enumerate(cart['items']):
+        if item[0]==shoe_id and item[1]==size:
+            cart['items'].pop(i)
+            print("видалено з кошика")
+            return
+    print("товару немає в кошику")
+
+def showCart(customer_id):
+    cart = getCart(customer_id)
+    if not cart['items']:
+        print("кошик порожній")
+        return
+    print(f"\n{'='*40}")
+    print("ВАШ КОШИК:")
     total = 0
-    cnt = 0
-    for i in range(len(g)):
-        if g[i][0] == sid and g[i][4] == "active":
-            print(g[i][1] + " | " + g[i][3] + " | " + str(g[i][2]) + " | " + g[i][7])
-            total = total + g[i][2]
-            cnt = cnt + 1
-    if cnt == 0:
-        print("no grades")
-        return
-    avg = total / cnt
-    if avg >= 90:
-        overall = "A"
-    if avg >= 75 and avg < 90:
-        overall = "B"
-    if avg >= 60 and avg < 75:
-        overall = "C"
-    if avg >= 50 and avg < 60:
-        overall = "D"
-    if avg < 50:
-        overall = "F"
-    print("avg: " + str(round(avg, 1)) + " overall: " + overall)
+    for item in cart['items']:
+        for x in INVENTORY:
+            if x['id'] == item[0]:
+                print(f"  {x['brand']} {x['model']} р.{item[1]} x{item[2]} = {item[3]*item[2]} грн")
+                total += item[3]*item[2]
+    print(f"{'='*40}")
+    print(f"РАЗОМ: {total} грн")
 
-def cc(cname):
-    cf = -1
-    for i in range(len(c)):
-        if c[i][0] == cname:
-            cf = i
-    if cf == -1:
-        print("no course")
-        return
-    print("=== " + cname + " ===")
-    grades_list = []
-    for i in range(len(g)):
-        if g[i][1] == cname and g[i][4] == "active":
-            grades_list.append(g[i][2])
-    if len(grades_list) == 0:
-        print("no grades yet")
-        return
-    mn = grades_list[0]
-    mx = grades_list[0]
-    sm = 0
-    for i in range(len(grades_list)):
-        sm = sm + grades_list[i]
-        if grades_list[i] < mn:
-            mn = grades_list[i]
-        if grades_list[i] > mx:
-            mx = grades_list[i]
-    print("count: " + str(len(grades_list)))
-    print("avg: " + str(round(sm / len(grades_list), 1)))
-    print("min: " + str(mn) + " max: " + str(mx))
+def clearCart(customer_id):
+    cart = getCart(customer_id)
+    cart['items'] = []
+    print("кошик очищено")
 
-def dg(gid):
-    for i in range(len(g)):
-        if g[i][6] == gid:
-            if g[i][4] == "active":
-                g[i][4] = "deleted"
-                print("deleted")
+######## ПРОМОКОДИ ########
+
+def createPromo(code, discount, type, min_order=0, uses=None, expiry=None):
+    # type: percent або fixed
+    for p in PROMO:
+        if p['code'] == code:
+            print("промокод існує")
+            return
+    PROMO.append({
+        'code': code,
+        'discount': discount,
+        'type': type,
+        'min_order': min_order,
+        'uses_left': uses,       # None = безліміт
+        'expiry': expiry,
+        'active': True,
+        'used_by': []
+    })
+    print(f"промокод створено: {code} — {discount}{'%' if type=='percent' else ' грн'}")
+
+def applyPromo(code, order_total, customer_id):
+    for p in PROMO:
+        if p['code'] == code:
+            if not p['active']:
+                print("промокод неактивний")
+                return 0
+            if p['expiry'] and datetime.datetime.now() > p['expiry']:
+                print("термін дії вичерпано")
+                return 0
+            if order_total < p['min_order']:
+                print(f"мінімальна сума замовлення: {p['min_order']} грн")
+                return 0
+            if p['uses_left'] != None and p['uses_left'] <= 0:
+                print("промокод вичерпано")
+                return 0
+            if customer_id in p['used_by']:
+                print("ви вже використовували цей промокод")
+                return 0
+            if p['type'] == 'percent':
+                disc = round(order_total * p['discount'] / 100)
+            if p['type'] == 'fixed':
+                disc = min(p['discount'], order_total)
+            print(f"знижка: {disc} грн")
+            return disc
+    print("промокод не знайдено")
+    return 0
+
+######## ЗАМОВЛЕННЯ ########
+
+def placeOrder(customer_id, delivery_type, address_idx=0, promo_code=None, use_bonus=False):
+    # знайти клієнта
+    customer = None
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            customer = c
+    if not customer:
+        print("клієнта не знайдено")
+        return None
+    cart = getCart(customer_id)
+    if not cart['items']:
+        print("кошик порожній")
+        return None
+    # перевірити наявність всього і зарезервувати
+    items_to_order = []
+    subtotal = 0
+    for item in cart['items']:
+        shoe_id, size, qty, price = item
+        found = False
+        for x in INVENTORY:
+            if x['id'] == shoe_id:
+                for v in x['variants']:
+                    if v[0] == size:
+                        if v[2] < qty:
+                            print(f"недостатньо товару: {x['brand']} {x['model']} р.{size}")
+                            return None
+                        found = True
+                        items_to_order.append({'shoe': shoe_id, 'size': size, 'qty': qty, 'price': price, 'brand': x['brand'], 'model': x['model']})
+                        subtotal += price * qty
+        if not found:
+            print("товар недоступний")
+            return None
+    # доставка
+    delivery_cost = 0
+    if delivery_type == 'courier':
+        delivery_cost = 99
+    if delivery_type == 'novaposhta':
+        delivery_cost = 59
+    if delivery_type == 'pickup':
+        delivery_cost = 0
+    total = subtotal + delivery_cost
+    # промокод
+    discount = 0
+    if promo_code:
+        discount = applyPromo(promo_code, total, customer_id)
+        total -= discount
+    # бонуси
+    bonus_used = 0
+    if use_bonus and customer['bonus_points'] > 0:
+        bonus_used = min(customer['bonus_points'], round(total * 0.1))
+        total -= bonus_used
+        customer['bonus_points'] -= bonus_used
+    # нараховані бонуси (1% від суми)
+    bonus_earned = round(total * 0.01)
+    # списати з залишків
+    for item in items_to_order:
+        for x in INVENTORY:
+            if x['id'] == item['shoe']:
+                for v in x['variants']:
+                    if v[0] == item['size']:
+                        v[2] -= item['qty']
+                        v[3] += item['qty']
+    # оновити промокод
+    if promo_code and discount > 0:
+        for p in PROMO:
+            if p['code'] == promo_code:
+                p['used_by'].append(customer_id)
+                if p['uses_left'] != None:
+                    p['uses_left'] -= 1
+    order_id = 'ORD' + str(len(ORDERS)+1).zfill(6)
+    addr = customer['addresses'][address_idx] if customer['addresses'] else {}
+    ORDERS.append({
+        'id': order_id,
+        'customer': customer_id,
+        'items': [(i['shoe'], i['size'], i['qty'], i['price']) for i in items_to_order],
+        'subtotal': subtotal,
+        'delivery_type': delivery_type,
+        'delivery_cost': delivery_cost,
+        'discount': discount,
+        'bonus_used': bonus_used,
+        'bonus_earned': bonus_earned,
+        'total': total,
+        'address': addr,
+        'status': 'pending',       # pending/confirmed/shipped/delivered/cancelled
+        'created': datetime.datetime.now(),
+        'promo': promo_code
+    })
+    customer['orders'].append(order_id)
+    customer['bonus_points'] += bonus_earned
+    updateTier(customer_id)
+    clearCart(customer_id)
+    print(f"\nзамовлення #{order_id} оформлено!")
+    print(f"сума: {subtotal} грн | доставка: {delivery_cost} грн | знижка: {discount} грн | бонуси: -{bonus_used} грн")
+    print(f"до сплати: {total} грн")
+    print(f"нараховано бонусів: +{bonus_earned}")
+    return order_id
+
+def updateOrderStatus(order_id, new_status):
+    valid = ['pending','confirmed','shipped','delivered','cancelled']
+    if new_status not in valid:
+        print("невірний статус")
+        return
+    for o in ORDERS:
+        if o['id'] == order_id:
+            old = o['status']
+            if old == 'cancelled':
+                print("замовлення вже скасовано")
                 return
-            if g[i][4] == "deleted":
-                print("already deleted")
+            if old == 'delivered' and new_status != 'delivered':
+                print("доставлене замовлення не можна змінити")
                 return
-    print("not found")
+            o['status'] = new_status
+            # якщо скасовано — повернути на склад
+            if new_status == 'cancelled':
+                for item in o['items']:
+                    for x in INVENTORY:
+                        if x['id'] == item[0]:
+                            for v in x['variants']:
+                                if v[0] == item[1]:
+                                    v[2] += item[2]
+                                    v[3] -= item[2]
+                # відняти бонуси якщо були нараховані
+                for c in CUSTOMERS:
+                    if c['id'] == o['customer']:
+                        c['bonus_points'] -= o['bonus_earned']
+                        c['bonus_points'] = max(0, c['bonus_points'])
+            # якщо доставлено — зарахувати витрати
+            if new_status == 'delivered':
+                for c in CUSTOMERS:
+                    if c['id'] == o['customer']:
+                        c['total_spent'] += o['total']
+                        updateTier(c['id'])
+            print(f"статус оновлено: {old} → {new_status}")
+            return
+    print("замовлення не знайдено")
 
-def top(n):
-    tmp = []
-    for i in range(len(s)):
-        total = 0
-        cnt = 0
-        for j in range(len(g)):
-            if g[j][0] == s[i][0] and g[j][4] == "active":
-                total = total + g[j][2]
-                cnt = cnt + 1
-        if cnt > 0:
-            tmp.append([s[i][1], total / cnt])
-    for i in range(len(tmp)):
-        for j in range(len(tmp) - 1):
-            if tmp[j][1] < tmp[j+1][1]:
-                x = tmp[j]
-                tmp[j] = tmp[j+1]
-                tmp[j+1] = x
-    print("=== top " + str(n) + " ===")
-    for i in range(n):
-        if i < len(tmp):
-            print(str(i+1) + ". " + tmp[i][0] + " - " + str(round(tmp[i][1], 1)))
+def showOrder(order_id):
+    for o in ORDERS:
+        if o['id'] == order_id:
+            print(f"\n{'='*40}")
+            print(f"замовлення: {o['id']}")
+            print(f"статус: {o['status']}")
+            print(f"дата: {o['created'].strftime('%d.%m.%Y %H:%M')}")
+            print(f"товари:")
+            for item in o['items']:
+                for x in INVENTORY:
+                    if x['id'] == item[0]:
+                        print(f"  {x['brand']} {x['model']} р.{item[1]} x{item[2]} = {item[3]*item[2]} грн")
+            print(f"доставка ({o['delivery_type']}): {o['delivery_cost']} грн")
+            if o['discount']:
+                print(f"знижка: -{o['discount']} грн")
+            if o['bonus_used']:
+                print(f"бонуси використано: -{o['bonus_used']}")
+            print(f"РАЗОМ: {o['total']} грн")
+            return
+    print("замовлення не знайдено")
 
-def rep(sid, cname):
-    sf = -1
-    cf = -1
-    for i in range(len(s)):
-        if s[i][0] == sid:
-            sf = i
-    for i in range(len(c)):
-        if c[i][0] == cname:
-            cf = i
-    if sf == -1 or cf == -1:
-        print("not found")
+######## ПОВЕРНЕННЯ ########
+
+def createReturn(order_id, customer_id, items_to_return, reason):
+    # items_to_return: [(shoe_id, size, qty)]
+    order = None
+    for o in ORDERS:
+        if o['id'] == order_id and o['customer'] == customer_id:
+            order = o
+    if not order:
+        print("замовлення не знайдено")
         return
-    have = []
-    need = ["exam", "hw", "lab", "test"]
-    for i in range(len(g)):
-        if g[i][0] == sid and g[i][1] == cname and g[i][4] == "active":
-            have.append(g[i][3])
-    missing = []
-    for i in range(len(need)):
-        if need[i] not in have:
-            missing.append(need[i])
-    print("student: " + s[sf][1])
-    print("course: " + cname + " (" + str(c[cf][1]) + " credits)")
-    print("completed: " + str(len(have)) + "/4")
-    if len(missing) > 0:
-        print("missing: " + str(missing))
-    else:
-        print("all done")
+    if order['status'] != 'delivered':
+        print("повернення можливе тільки для доставлених замовлень")
+        return
+    # перевірити строк (14 днів)
+    if (datetime.datetime.now() - order['created']).days > 14:
+        print("строк повернення вичерпано (14 днів)")
+        return
+    # перевірити чи є ці товари в замовленні
+    refund = 0
+    valid_items = []
+    for ret_item in items_to_return:
+        for o_item in order['items']:
+            if o_item[0]==ret_item[0] and o_item[1]==ret_item[1]:
+                if ret_item[2] > o_item[2]:
+                    print(f"кількість перевищує замовлену")
+                    return
+                valid_items.append(ret_item)
+                refund += o_item[3] * ret_item[2]
+    if not valid_items:
+        print("товари не знайдено в замовленні")
+        return
+    ret_id = 'RET' + str(len(RETURNS)+1).zfill(5)
+    RETURNS.append({
+        'id': ret_id,
+        'order': order_id,
+        'customer': customer_id,
+        'items': valid_items,
+        'reason': reason,
+        'refund': refund,
+        'status': 'pending',   # pending/approved/rejected/completed
+        'created': datetime.datetime.now()
+    })
+    print(f"заявку на повернення створено: {ret_id}")
+    print(f"сума повернення: {refund} грн")
+
+def processReturn(ret_id, approve):
+    for r in RETURNS:
+        if r['id'] == ret_id:
+            if r['status'] != 'pending':
+                print("заявка вже оброблена")
+                return
+            if approve:
+                r['status'] = 'approved'
+                # повернути товар на склад
+                for item in r['items']:
+                    for x in INVENTORY:
+                        if x['id'] == item[0]:
+                            for v in x['variants']:
+                                if v[0] == item[1]:
+                                    v[2] += item[2]
+                # повернути бонуси клієнту
+                for c in CUSTOMERS:
+                    if c['id'] == r['customer']:
+                        refund_bonus = round(r['refund'] * 0.01)
+                        c['bonus_points'] += refund_bonus
+                print(f"повернення схвалено. сума до повернення: {r['refund']} грн")
+            else:
+                r['status'] = 'rejected'
+                print("повернення відхилено")
+            return
+    print("заявку не знайдено")
+
+######## АНАЛІТИКА ########
+
+def salesReport(days=30):
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    total_rev = 0
+    total_orders = 0
+    total_items = 0
+    cancelled = 0
+    top = {}
+    for o in ORDERS:
+        if o['created'] < cutoff:
+            continue
+        total_orders += 1
+        if o['status'] == 'cancelled':
+            cancelled += 1
+            continue
+        total_rev += o['total']
+        for item in o['items']:
+            total_items += item[2]
+            key = item[0]
+            if key not in top:
+                top[key] = 0
+            top[key] += item[2]
+    print(f"\n{'='*40}")
+    print(f"ЗВІТ ЗА {days} ДНІВ")
+    print(f"замовлень: {total_orders} (скасовано: {cancelled})")
+    print(f"виручка: {total_rev} грн")
+    print(f"продано пар: {total_items}")
+    if top:
+        best_id = max(top, key=top.get)
+        for x in INVENTORY:
+            if x['id'] == best_id:
+                print(f"топ товар: {x['brand']} {x['model']} — {top[best_id]} пар")
+
+def lowStockAlert(threshold=3):
+    print(f"\n{'='*40}")
+    print(f"МАЛО НА СКЛАДІ (менше {threshold} шт):")
+    found = False
+    for x in INVENTORY:
+        if not x['active']:
+            continue
+        for v in x['variants']:
+            if 0 < v[2] <= threshold:
+                found = True
+                print(f"  {x['brand']} {x['model']} р.{v[0]}: {v[2]} шт")
+    if not found:
+        print("  все в нормі")
+
+def customerStats(customer_id):
+    for c in CUSTOMERS:
+        if c['id'] == customer_id:
+            orders = [o for o in ORDERS if o['customer']==customer_id]
+            delivered = [o for o in orders if o['status']=='delivered']
+            cancelled_o = [o for o in orders if o['status']=='cancelled']
+            fav_cat = {}
+            for o in delivered:
+                for item in o['items']:
+                    for x in INVENTORY:
+                        if x['id']==item[0]:
+                            cat = x['category']
+                            fav_cat[cat] = fav_cat.get(cat,0)+item[2]
+            print(f"\n{'='*40}")
+            print(f"статистика: {c['name']}")
+            print(f"рівень: {c['tier']}")
+            print(f"замовлень: {len(orders)} | виконано: {len(delivered)} | скасовано: {len(cancelled_o)}")
+            print(f"витрачено: {c['total_spent']} грн")
+            print(f"бонусів: {c['bonus_points']}")
+            if fav_cat:
+                fav = max(fav_cat, key=fav_cat.get)
+                print(f"улюблена категорія: {fav}")
+            return
+    print("клієнта не знайдено")
+
+def inventoryReport():
+    print(f"\n{'='*40}")
+    print("ЗВІТ ПО СКЛАДУ")
+    total_pairs = 0
+    total_value = 0
+    for x in INVENTORY:
+        if not x['active']: continue
+        pairs = sum(v[2] for v in x['variants'])
+        value = sum(v[1]*v[2] for v in x['variants'])
+        total_pairs += pairs
+        total_value += value
+        if pairs > 0:
+            print(f"  {x['brand']} {x['model']}: {pairs} пар на {value} грн")
+    print(f"ВСЬОГО: {total_pairs} пар | вартість: {total_value} грн")
 
 
-# usage
-nc("Math", 5, 100)
-nc("Physics", 4, 100)
-nc("Programming", 6, 100)
-nc("History", 3, 50)
+######## ДЕМО ########
 
-ns("Anna", "Kovalenko", 2, "anna@uni.edu")
-ns("Ivan", "Petrenko", 1, "ivan@uni.edu")
-ns("Maria", "Bondar", 3, "maria@uni.edu")
-ns("Oleg", "Shevchenko", 2, "oleg@uni.edu")
+addSupplier("Nike UA", "Ukraine", "nike@ua.com", 30)
+addSupplier("Adidas EU", "Germany", "adidas@eu.com", 25)
+addSupplier("New Balance", "USA", "nb@usa.com", 35)
 
-ag(1, "Math", 88, "exam")
-ag(1, "Math", 45, "hw")
-ag(1, "Programming", 95, "exam")
-ag(1, "Programming", 90, "lab")
-ag(2, "Math", 60, "exam")
-ag(2, "Physics", 72, "exam")
-ag(2, "Physics", 55, "lab")
-ag(3, "Programming", 78, "exam")
-ag(3, "History", 40, "test")
-ag(4, "Math", 91, "exam")
-ag(4, "Physics", 85, "exam")
+newShoe("Nike", "Air Max 90", "White/Red",
+        {40:3200, 41:3200, 42:3300, 43:3300, 44:3400},
+        "lifestyle", "M", "шкіра")
+newShoe("Nike", "React Infinity", "Black/White",
+        {37:4100, 38:4100, 39:4200, 40:4200, 41:4300},
+        "running", "F", "сітка")
+newShoe("Adidas", "Ultraboost 22", "Core Black",
+        {40:5200, 41:5200, 42:5300, 43:5300, 44:5400},
+        "running", "M", "сітка")
+newShoe("Adidas", "Stan Smith", "White/Green",
+        {36:2100, 37:2100, 38:2200, 39:2200, 40:2300},
+        "lifestyle", "U", "шкіра")
+newShoe("New Balance", "990v5", "Grey",
+        {40:6800, 41:6800, 42:6900, 43:6900, 44:7000},
+        "lifestyle", "M", "замша")
+newShoe("Jordan", "Air Jordan 1 High", "Chicago",
+        {40:8500, 41:8500, 42:8600, 43:8700, 44:8800},
+        "basketball", "M", "шкіра")
 
-sg(1)
-sg(2)
-cc("Math")
-cc("Physics")
-top(3)
-rep(1, "Math")
+stockUp("SH0001", 42, 10, "SUP001")
+stockUp("SH0001", 43, 8, "SUP001")
+stockUp("SH0002", 38, 5, "SUP001")
+stockUp("SH0002", 39, 7, "SUP001")
+stockUp("SH0003", 41, 12, "SUP002")
+stockUp("SH0003", 42, 10, "SUP002")
+stockUp("SH0004", 38, 15, "SUP002")
+stockUp("SH0004", 39, 12, "SUP002")
+stockUp("SH0005", 42, 6, "SUP003")
+stockUp("SH0005", 43, 4, "SUP003")
+stockUp("SH0006", 42, 3, "SUP001")
+stockUp("SH0006", 43, 2, "SUP001")
+
+registerCustomer("Олена", "Коваль", "olena@gmail.com", "0501234567", "1995-03-15")
+registerCustomer("Максим", "Руденко", "maxim@gmail.com", "0671234567", "1988-11-22")
+registerCustomer("Аліна", "Шевченко", "alina@gmail.com", "0931234567", "2001-07-08")
+registerCustomer("Богдан", "Мельник", "bogdan@gmail.com", "0661234567", "1979-04-30")
+
+addAddress("C00001", "Київ", "Хрещатик", "22", "15", True)
+addAddress("C00002", "Львів", "Городоцька", "45", None, True)
+addAddress("C00003", "Одеса", "Дерибасівська", "10", "3", True)
+
+createPromo("NIKE10", 10, "percent", min_order=2000, uses=100)
+createPromo("WELCOME", 300, "fixed", min_order=1500, uses=None)
+createPromo("VIP20", 20, "percent", min_order=5000, uses=50)
+
+addToCart("C00001", "SH0001", 42, 1)
+addToCart("C00001", "SH0004", 38, 1)
+showCart("C00001")
+o1 = placeOrder("C00001", "courier", 0, "WELCOME")
+
+addToCart("C00002", "SH0003", 42, 1)
+o2 = placeOrder("C00002", "novaposhta", 0, "NIKE10")
+
+addToCart("C00003", "SH0006", 42, 1)
+o3 = placeOrder("C00003", "pickup")
+
+addToCart("C00004", "SH0005", 42, 1)
+addToCart("C00004", "SH0001", 43, 1)
+o4 = placeOrder("C00004", "courier", 0, "VIP20", use_bonus=False)
+
+updateOrderStatus(o1, "confirmed")
+updateOrderStatus(o1, "shipped")
+updateOrderStatus(o1, "delivered")
+updateOrderStatus(o2, "confirmed")
+updateOrderStatus(o2, "delivered")
+
+rateShoe("SH0001", "C00001", 5, "чудові кросівки!")
+rateShoe("SH0003", "C00002", 4, "дуже зручні для бігу")
+
+showShoe("SH0001")
+showShoe("SH0006")
+showOrder(o1)
+showOrder(o3)
+customerStats("C00001")
+customerStats("C00002")
+salesReport(30)
+lowStockAlert(3)
+inventoryReport()
+
+results = findShoe(brand="Nike", in_stock=True)
+print(f"\nзнайдено Nike: {len(results)} модель(ей)")
+results2 = findShoe(cat="running", max_price=5000, in_stock=True)
+print(f"running до 5000 грн: {len(results2)} варіант(ів)")
